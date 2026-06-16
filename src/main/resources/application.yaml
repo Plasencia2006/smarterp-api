@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: smarterp-api
+  
+  profiles:
+    active: dev
+  
+  datasource:
+    url: jdbc:mysql://localhost:3306/microservicios_smarterp
+    username: root
+    password: 
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+  
+  jpa:
+    hibernate:
+      ddl-auto: create
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        format_sql: true
+  
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  
+  jackson:
+    time-zone: UTC
+    # NO usar serialization.WRITE_DATES_AS_TIMESTAMPS en Spring Boot 4.x
+    # En su lugar, usaremos una clase de configuración
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+jwt:
+  secret: "tu-clave-secreta-muy-larga-y-segura-aqui-cambiar-en-produccion-minimo-256-bits"
+  expiration: 86400000
+  refresh-expiration: 604800000
+
+logging:
+  level:
+    com.smarterp: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: DEBUG
