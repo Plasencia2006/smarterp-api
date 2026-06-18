@@ -1,6 +1,5 @@
 package com.smarterp.modules.inventory.entity;
 
-import com.smarterp.shared.entity.Business;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
@@ -19,15 +18,20 @@ public class Product {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "business_id", nullable = false)
-    private Business business;
+    @Column(name = "business_id", nullable = false)
+    private String businessId;
 
-    @Column(nullable = false, length = 255)
+    @Column(nullable = false)
     private String name;
 
-    @Column(unique = true, nullable = false, length = 50)
+    @Column(nullable = false, unique = true)
     private String sku;
+
+    @Column
+    private String barcode;
+
+    @Column(length = 1000)
+    private String description;
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price;
@@ -35,11 +39,23 @@ public class Product {
     @Column(name = "cost_price", precision = 10, scale = 2)
     private BigDecimal costPrice;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id")
-    private ProductCategory category;
+    @Transient
+    private Integer stock;
 
-    @Column(name = "created_at", updatable = false)
+    @Column(nullable = false)
+    private Integer minStock;
+
+    @Column
+    private String unit;
+
+    // ✅ AGREGAR: Relación con categoría
+    @Column(name = "category_id")
+    private String categoryId;
+
+    @Transient
+    private String categoryName; // Para mostrar el nombre en el frontend
+
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @Column(name = "updated_at")
@@ -49,6 +65,10 @@ public class Product {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+        if (minStock == null)
+            minStock = 5;
+        if (unit == null)
+            unit = "UNIDAD";
     }
 
     @PreUpdate

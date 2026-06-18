@@ -20,13 +20,14 @@ public class TestController {
         response.put("message", "SMART ERP API está funcionando correctamente");
         response.put("timestamp", LocalDateTime.now());
         response.put("version", "1.0.0");
-        response.put("modules", new String[] {
-                "Cajero",
-                "Vendedor",
-                "Inventario",
-                "Contador",
-                "Soporte"
-        });
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/hello")
+    public ResponseEntity<Map<String, String>> hello() {
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "Hello World from SMART ERP API");
+        response.put("status", "success");
         return ResponseEntity.ok(response);
     }
 

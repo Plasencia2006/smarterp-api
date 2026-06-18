@@ -16,15 +16,15 @@ spring:
   
   jpa:
     hibernate:
-      ddl-auto: create
-    show-sql: false
+      ddl-auto: update
+      show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect
         format_sql: true
   
   flyway:
-    enabled: true
+    enabled: false
     locations: classpath:db/migration
     baseline-on-migrate: true
   
@@ -39,7 +39,7 @@ server:
     context-path: /api
 
 jwt:
-  secret: "tu-clave-secreta-muy-larga-y-segura-aqui-cambiar-en-produccion-minimo-256-bits"
+  secret: "django-insecure-smarterp-clave-secreta-2024-abc123xyz"
   expiration: 86400000
   refresh-expiration: 604800000
 
