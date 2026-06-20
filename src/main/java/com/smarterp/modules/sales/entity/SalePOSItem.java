@@ -6,22 +6,22 @@ import lombok.*;
 import java.math.BigDecimal;
 
 @Entity
-@Table(name = "quote_items")
+@Table(name = "pos_sale_items") // ✅ Nombre de tabla único
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class QuoteItem {
+public class SalePOSItem {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "quote_id", nullable = false)
+    @JoinColumn(name = "sale_pos_id", nullable = false) // ✅ FK única
     @JsonBackReference
-    private Quote quote;
+    private SalePOS salePOS;
 
     @Column(name = "product_id", nullable = false)
     private String productId;
@@ -38,19 +38,24 @@ public class QuoteItem {
     @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
     private BigDecimal unitPrice;
 
+    @Column(name = "cost_price", precision = 10, scale = 2)
+    private BigDecimal costPrice;
+
+    @Column(precision = 10, scale = 2)
+    private BigDecimal discount;
+
     @Column(precision = 10, scale = 2)
     private BigDecimal subtotal;
 
     @PrePersist
     protected void onCreate() {
-        // ✅ Evitar null
-        if (this.quantity == null || this.quantity <= 0) {
-            this.quantity = 1;
-        }
-        if (this.unitPrice == null) {
-            this.unitPrice = BigDecimal.ZERO;
-        }
-        // ✅ Calcular subtotal SIEMPRE
-        this.subtotal = this.unitPrice.multiply(BigDecimal.valueOf(this.quantity));
+        if (discount == null)
+            discount = BigDecimal.ZERO;
+        calculateSubtotal();
+    }
+
+    public void calculateSubtotal() {
+        BigDecimal base = unitPrice.multiply(BigDecimal.valueOf(quantity));
+        this.subtotal = base.subtract(discount);
     }
 }

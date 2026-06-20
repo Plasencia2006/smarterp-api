@@ -1,5 +1,7 @@
 package com.smarterp.modules.sales.entity;
 
 public enum QuoteStatus {
-    PENDING, ACCEPTED, REJECTED, CONVERTED
+    PENDIENTE, // Vendedor creó, esperando pago
+    PAGADA, // Cajero cobró
+    CANCELADA // Cliente canceló
 }
