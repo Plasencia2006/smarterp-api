@@ -388,7 +388,7 @@ public class BulkImportService {
         Map<String, Object> validation = new HashMap<>();
         List<String> errors = new ArrayList<>();
 
-        // ✅ Leer con UTF-8 y remover BOM
+        //  Leer con UTF-8 y remover BOM
         String content = new String(file.getBytes(), StandardCharsets.UTF_8);
         if (content.startsWith("\uFEFF")) {
             content = content.substring(1);
@@ -403,7 +403,7 @@ public class BulkImportService {
             return validation;
         }
 
-        // ✅ Detectar delimitador automáticamente
+        //  Detectar delimitador automáticamente
         char delimiter = lines.get(0).contains(";") ? ';' : ',';
 
         int validRows = 0;
@@ -473,7 +473,7 @@ public class BulkImportService {
      * - Comillas para campos con delimitadores
      */
     private String[] parseCSVLine(String line) {
-        // ✅ Detectar automáticamente el delimitador
+        //  Detectar automáticamente el delimitador
         char delimiter = line.contains(";") ? ';' : ',';
 
         List<String> columns = new ArrayList<>();

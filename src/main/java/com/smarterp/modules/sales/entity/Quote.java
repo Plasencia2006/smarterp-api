@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -63,7 +64,7 @@ public class Quote {
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 
-    // ✅ CAMPOS PARA BLOQUEO TEMPORAL
+    //  CAMPOS PARA BLOQUEO TEMPORAL
     @Column(name = "blocked_until")
     private LocalDateTime blockedUntil;
 
@@ -72,6 +73,19 @@ public class Quote {
 
     @Column(name = "block_duration_minutes")
     private Integer blockDurationMinutes;
+
+    //  NUEVOS CAMPOS PARA FACTURACIÓN
+    @Column(name = "invoice_number")
+    private String invoiceNumber;
+
+    @Column(name = "validated_at")
+    private LocalDateTime validatedAt;
+
+    @Column(name = "validated_by")
+    private String validatedBy;
+
+    @Column(name = "is_valid")
+    private Boolean isValid;
 
     @OneToMany(mappedBy = "quote", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @Builder.Default
@@ -102,6 +116,8 @@ public class Quote {
             total = BigDecimal.ZERO;
         if (isBlocked == null)
             isBlocked = false;
+        if (isValid == null)
+            isValid = true;
     }
 
     @PreUpdate
@@ -145,7 +161,7 @@ public class Quote {
         this.total = this.subtotal.add(this.igv);
     }
 
-    // ✅ MÉTODOS PARA BLOQUEO
+    //  MÉTODOS PARA BLOQUEO
     public boolean isExpired() {
         if (this.blockedUntil == null || this.isBlocked == null || !this.isBlocked) {
             return false;
@@ -171,5 +187,12 @@ public class Quote {
         this.isBlocked = false;
         this.blockedUntil = null;
         this.blockDurationMinutes = null;
+    }
+
+    //  NUEVO MÉTODO: Generar número de factura
+    public String generateInvoiceNumber() {
+        String date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String random = String.format("%04d", System.currentTimeMillis() % 10000);
+        return "F-" + date + "-" + random;
     }
 }

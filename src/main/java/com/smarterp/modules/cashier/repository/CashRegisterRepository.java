@@ -10,7 +10,10 @@ import java.util.Optional;
 
 @Repository
 public interface CashRegisterRepository extends JpaRepository<CashRegister, String> {
-    Optional<CashRegister> findByBusinessIdAndStatus(String businessId, CashRegisterStatus status);
 
-    List<CashRegister> findByBusinessId(String businessId);
+    Optional<CashRegister> findByUserIdAndStatus(String userId, CashRegisterStatus status);
+
+    List<CashRegister> findByBusinessIdAndUserIdOrderByOpeningTimeDesc(String businessId, String userId);
+
+    List<CashRegister> findByBusinessIdOrderByOpeningTimeDesc(String businessId);
 }

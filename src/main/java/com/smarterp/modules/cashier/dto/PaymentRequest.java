@@ -1,14 +1,19 @@
 package com.smarterp.modules.cashier.dto;
 
-import jakarta.validation.constraints.NotNull;
-import lombok.Data;
+import lombok.*;
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class PaymentRequest {
-    @NotNull
-    private String method;
-    @NotNull
-    private BigDecimal amount;
-    private String reference;
+    private String quoteNumber;
+    private String paymentMethod;
+    private BigDecimal amountPaid;
+    private String notes;
+    private Map<String, List<String>> serialNumbers;
+    private Map<String, List<String>> imeis;
 }

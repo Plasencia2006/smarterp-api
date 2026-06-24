@@ -1,15 +1,13 @@
 package com.smarterp.modules.cashier.dto;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import lombok.Data;
+import lombok.*;
 import java.math.BigDecimal;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class CashRegisterCloseRequest {
-    @NotBlank(message = "El ID de la caja es obligatorio")
-    private String id;
-
-    @NotNull(message = "El monto final es obligatorio")
-    private BigDecimal finalAmount;
+    private BigDecimal finalCash;
+    private String closingNotes;
 }
