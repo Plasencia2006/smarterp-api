@@ -1,8 +1,8 @@
 package com.smarterp.modules.sales.service;
 
+import com.smarterp.common.utils.UserContext;
 import com.smarterp.modules.inventory.entity.Stock;
 import com.smarterp.modules.inventory.repository.StockRepository;
-import com.smarterp.modules.sales.dto.QuoteItemRequest;
 import com.smarterp.modules.sales.dto.QuoteRequest;
 import com.smarterp.modules.sales.entity.Quote;
 import com.smarterp.modules.sales.entity.QuoteItem;
@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -26,268 +27,226 @@ public class QuoteService {
 
     private final QuoteRepository quoteRepository;
     private final StockRepository stockRepository;
+    private final UserContext userContext;
 
+    /**
+     * 📝 CREAR COTIZACIÓN
+     */
     @Transactional
     public Quote createQuote(String businessId, QuoteRequest request) {
-        log.info("📝 Creando cotización - Cliente: {}", request.getCustomerName());
+        // ✅ OBTENER EMAIL DEL VENDEDOR (ahora userId es el email)
+        String sellerId = userContext.getCurrentUserId();
+        String sellerName = userContext.getCurrentUserEmail();
 
-        if (request.getCustomerName() == null || request.getCustomerName().trim().isEmpty()) {
-            throw new RuntimeException("El nombre del cliente es obligatorio");
-        }
+        log.info("📝 Creando cotización - Vendedor: {} ({})", sellerName, sellerId);
 
-        if (request.getItems() == null || request.getItems().isEmpty()) {
-            throw new RuntimeException("Debe agregar al menos un producto");
-        }
-
-        // Validar stock disponible (considerando bloqueos)
-        for (QuoteItemRequest itemReq : request.getItems()) {
-            log.info("   Validando stock: {} (cantidad: {})",
-                    itemReq.getProductName(), itemReq.getQuantity());
-
-            if (itemReq.getProductId() == null) {
-                throw new RuntimeException("Producto sin ID: " + itemReq.getProductName());
-            }
-
-            if (itemReq.getQuantity() == null || itemReq.getQuantity() <= 0) {
-                throw new RuntimeException("Cantidad inválida para: " + itemReq.getProductName());
-            }
-
-            if (itemReq.getUnitPrice() == null) {
-                throw new RuntimeException("Precio inválido para: " + itemReq.getProductName());
-            }
-
-            Stock stock = stockRepository.findByProductIdAndBusinessId(
-                    itemReq.getProductId(), businessId)
-                    .orElseThrow(() -> new RuntimeException(
-                            "Producto no encontrado en stock: " + itemReq.getProductName()));
-
-            // Calcular stock disponible (total - bloqueado)
-            int blockedQuantity = getBlockedQuantityForProduct(itemReq.getProductId(), businessId);
-            int availableStock = stock.getQuantity() - blockedQuantity;
-
-            if (availableStock < itemReq.getQuantity()) {
-                throw new RuntimeException(
-                        "Stock insuficiente para: " + itemReq.getProductName() +
-                                ". Disponible: " + availableStock +
-                                " (Total: " + stock.getQuantity() +
-                                ", Bloqueado: " + blockedQuantity +
-                                "), Solicitado: " + itemReq.getQuantity());
-            }
-        }
-
-        // Crear cotización
         Quote quote = Quote.builder()
                 .businessId(businessId)
-                .sellerId(null)
-                .customerName(request.getCustomerName().trim())
-                .customerDocument(request.getCustomerDocument() != null ? request.getCustomerDocument().trim() : null)
-                .sellerName(request.getSellerName() != null ? request.getSellerName() : "Vendedor POS")
-                .notes(request.getNotes() != null ? request.getNotes() : "")
+                .sellerId(sellerId) // ✅ CRÍTICO: Guardar email como sellerId
+                .sellerName(sellerName)
+                .customerName(request.getCustomerName())
+                .customerDocument(request.getCustomerDocument())
                 .status(QuoteStatus.PENDIENTE)
+                .notes(request.getNotes())
+                .blockedUntil(null) // Inicialmente no bloqueado
+                .isBlocked(false)
                 .build();
 
         // Agregar items
-        for (QuoteItemRequest itemReq : request.getItems()) {
-            BigDecimal unitPrice = itemReq.getUnitPrice() != null ? itemReq.getUnitPrice() : BigDecimal.ZERO;
-            Integer quantity = itemReq.getQuantity() != null ? itemReq.getQuantity() : 1;
-
-            QuoteItem item = QuoteItem.builder()
-                    .productId(itemReq.getProductId())
-                    .productName(itemReq.getProductName())
-                    .productSku(itemReq.getProductSku() != null ? itemReq.getProductSku() : "")
-                    .quantity(quantity)
-                    .unitPrice(unitPrice)
-                    .build();
-
-            quote.addItem(item);
-            log.info("    Item agregado: {} x {} = S/ {}",
-                    itemReq.getProductName(), quantity,
-                    unitPrice.multiply(BigDecimal.valueOf(quantity)));
+        if (request.getItems() != null) {
+            request.getItems().forEach(itemRequest -> {
+                QuoteItem item = QuoteItem.builder()
+                        .productId(itemRequest.getProductId())
+                        .productName(itemRequest.getProductName())
+                        .productSku(itemRequest.getProductSku())
+                        .quantity(itemRequest.getQuantity())
+                        .unitPrice(itemRequest.getUnitPrice())
+                        .subtotal(itemRequest.getUnitPrice().multiply(
+                                BigDecimal.valueOf(itemRequest.getQuantity())))
+                        .build();
+                quote.addItem(item);
+            });
         }
 
         quote.calculateTotals();
 
-        //  BLOQUEO AUTOMÁTICO POR 20 MINUTOS
-        quote.activateBlock(20);
-        log.info("🔒 Productos bloqueados automáticamente por 20 minutos");
-        log.info("   Total productos bloqueados: {}", quote.getItems().size());
+        // ✅ ACTIVAR BLOQUEO POR 20 MINUTOS
+        quote.activateBlock(20); // Bloqueo de 20 minutos
 
-        for (QuoteItem item : quote.getItems()) {
-            log.info("   - {} ({} unidades)", item.getProductName(), item.getQuantity());
-        }
+        Quote savedQuote = quoteRepository.save(quote);
+        log.info("✅ Cotización creada: {} por vendedor {} - Bloqueada hasta: {}",
+                savedQuote.getQuoteNumber(), sellerId, savedQuote.getBlockedUntil());
 
-        Quote saved = quoteRepository.save(quote);
-
-        log.info(" Cotización creada y bloqueada: {}", saved.getQuoteNumber());
-        log.info("   Total: S/ {}", saved.getTotal());
-        log.info("   Cliente: {}", saved.getCustomerName());
-        log.info("   Bloqueado hasta: {}", saved.getBlockedUntil());
-
-        return saved;
+        return savedQuote;
     }
 
+    /**
+     * 🔒 BLOQUEAR COTIZACIÓN
+     */
     @Transactional
-    public Quote blockQuote(String quoteId, String businessId, Integer minutes) {
+    public Quote blockQuote(String quoteId, String businessId, int minutes) {
         Quote quote = quoteRepository.findById(quoteId)
                 .orElseThrow(() -> new RuntimeException("Cotización no encontrada"));
 
         if (!quote.getBusinessId().equals(businessId)) {
-            throw new RuntimeException("No tiene permisos");
+            throw new RuntimeException("No tiene permisos para esta cotización");
         }
 
         if (quote.getStatus() != QuoteStatus.PENDIENTE) {
             throw new RuntimeException("Solo se pueden bloquear cotizaciones pendientes");
         }
 
-        int blockMinutes = (minutes != null && minutes > 0) ? minutes : 20;
-        quote.activateBlock(blockMinutes);
+        // Activar bloqueo
+        quote.activateBlock(minutes);
 
-        Quote updated = quoteRepository.save(quote);
+        Quote saved = quoteRepository.save(quote);
+        log.info("✅ Cotización {} bloqueada hasta {}", saved.getQuoteNumber(), saved.getBlockedUntil());
 
-        log.info("🔒 Cotización bloqueada por {} minutos: {}", blockMinutes, quote.getQuoteNumber());
-
-        return updated;
+        return saved;
     }
 
+    /**
+     * 🔓 LIBERAR BLOQUEO
+     */
     @Transactional
     public Quote releaseBlock(String quoteId, String businessId) {
         Quote quote = quoteRepository.findById(quoteId)
                 .orElseThrow(() -> new RuntimeException("Cotización no encontrada"));
 
         if (!quote.getBusinessId().equals(businessId)) {
-            throw new RuntimeException("No tiene permisos");
+            throw new RuntimeException("No tiene permisos para esta cotización");
         }
 
         quote.releaseBlock();
 
-        Quote updated = quoteRepository.save(quote);
-        log.info("🔓 Bloqueo liberado: {}", quote.getQuoteNumber());
+        Quote saved = quoteRepository.save(quote);
+        log.info("✅ Bloqueo de cotización {} liberado", saved.getQuoteNumber());
 
-        return updated;
+        return saved;
     }
 
-    public int getBlockedQuantityForProduct(String productId, String businessId) {
-        List<Quote> activeQuotes = quoteRepository.findByBusinessIdAndStatus(businessId, QuoteStatus.PENDIENTE);
-
-        int totalBlocked = 0;
-
-        for (Quote quote : activeQuotes) {
-            if (quote.getIsBlocked() != null && quote.getIsBlocked() && !quote.isExpired()) {
-                for (QuoteItem item : quote.getItems()) {
-                    if (item.getProductId().equals(productId)) {
-                        totalBlocked += item.getQuantity();
-                    }
-                }
-            }
-        }
-
-        return totalBlocked;
-    }
-
+    /**
+     * 📦 DISPONIBILIDAD DE PRODUCTO
+     */
     public Map<String, Object> getProductAvailability(String productId, String businessId) {
+        // Buscar cotizaciones bloqueadas que contengan este producto
+        List<Quote> blockedQuotes = quoteRepository.findActiveBlockedQuotes(businessId);
+
+        // Filtrar por producto
+        long blockedCount = blockedQuotes.stream()
+                .filter(q -> q.getItems().stream()
+                        .anyMatch(item -> item.getProductId().equals(productId)))
+                .count();
+
+        Map<String, Object> availability = new HashMap<>();
+        availability.put("productId", productId);
+        availability.put("isBlocked", blockedCount > 0);
+        availability.put("blockedBy", blockedCount);
+        availability.put("blockedUntil", blockedCount > 0 ? blockedQuotes.stream()
+                .filter(q -> q.getItems().stream()
+                        .anyMatch(item -> item.getProductId().equals(productId)))
+                .map(Quote::getBlockedUntil)
+                .findFirst()
+                .orElse(null) : null);
+
+        // Obtener stock disponible
         Stock stock = stockRepository.findByProductIdAndBusinessId(productId, businessId)
                 .orElse(null);
 
-        if (stock == null) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("productId", productId);
-            response.put("totalStock", 0);
-            response.put("blockedQuantity", 0);
-            response.put("availableStock", 0);
-            response.put("isAvailable", false);
-            return response;
-        }
+        availability.put("stockAvailable", stock != null ? stock.getQuantity() : 0);
 
-        int blockedQuantity = getBlockedQuantityForProduct(productId, businessId);
-        int availableStock = stock.getQuantity() - blockedQuantity;
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("productId", productId);
-        response.put("productName", stock.getProductName());
-        response.put("totalStock", stock.getQuantity());
-        response.put("blockedQuantity", blockedQuantity);
-        response.put("availableStock", availableStock);
-        response.put("isAvailable", availableStock > 0);
-
-        return response;
+        return availability;
     }
 
-    public List<Quote> getPendingQuotes(String businessId) {
-        return quoteRepository.findByBusinessIdAndStatus(businessId, QuoteStatus.PENDIENTE);
-    }
-
-    public Quote getByNumber(String quoteNumber, String businessId) {
-        Quote quote = quoteRepository.findByQuoteNumber(quoteNumber)
-                .orElseThrow(() -> new RuntimeException("Cotización no encontrada"));
-
-        if (!quote.getBusinessId().equals(businessId)) {
-            throw new RuntimeException("No tiene permisos");
-        }
-
-        return quote;
-    }
-
+    /**
+     * 📋 OBTENER TODAS LAS COTIZACIONES
+     */
     public List<Quote> getAllQuotes(String businessId) {
         return quoteRepository.findByBusinessIdOrderByCreatedAtDesc(businessId);
     }
 
     /**
-     * 📊 Dashboard del Vendedor
+     * 🔍 BUSCAR POR NÚMERO
      */
-    public Map<String, Object> getVendedorDashboard(String businessId) {
-        LocalDateTime today = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
-        LocalDateTime yesterday = today.minusDays(1);
-        LocalDateTime last7Days = today.minusDays(7);
-        LocalDateTime last30Days = today.minusDays(30);
+    public Quote getByNumber(String quoteNumber, String businessId) {
+        Quote quote = quoteRepository.findByQuoteNumber(quoteNumber)
+                .orElseThrow(() -> new RuntimeException("Cotización no encontrada: " + quoteNumber));
 
-        List<Quote> allQuotes = quoteRepository.findByBusinessIdOrderByCreatedAtDesc(businessId);
+        if (!quote.getBusinessId().equals(businessId)) {
+            throw new RuntimeException("Cotización no pertenece a este negocio");
+        }
 
+        return quote;
+    }
+
+        /**
+     * 📊 DASHBOARD DEL VENDEDOR
+     */
+    public Map<String, Object> getVendedorDashboard(String businessId, String sellerId) {
+        log.info("📊 Obteniendo dashboard del vendedor: {}", sellerId);
+        
+        Map<String, Object> dashboard = new HashMap<>();
+        
+        // Obtener todas las cotizaciones del vendedor
+        List<Quote> allQuotes = quoteRepository.findByBusinessIdAndSellerIdOrderByCreatedAtDesc(businessId, sellerId);
+        
+        // Filtrar por fecha
+        LocalDateTime todayStart = LocalDateTime.now().toLocalDate().atStartOfDay();
+        LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
+        
         // Cotizaciones de hoy
-        long quotesToday = allQuotes.stream()
-                .filter(q -> q.getCreatedAt().isAfter(today))
-                .count();
-
-        // Cotizaciones pendientes
-        long pendingQuotes = allQuotes.stream()
+        List<Quote> todayQuotes = allQuotes.stream()
+                .filter(q -> q.getCreatedAt().isAfter(todayStart))
+                .collect(Collectors.toList());
+        
+        // Cotizaciones de los últimos 7 días
+        List<Quote> last7DaysQuotes = allQuotes.stream()
+                .filter(q -> q.getCreatedAt().isAfter(sevenDaysAgo))
+                .collect(Collectors.toList());
+        
+        // Calcular totales
+        long totalCotizaciones = allQuotes.size();
+        long cotizacionesHoy = todayQuotes.size();
+        long cotizacionesPendientes = allQuotes.stream()
                 .filter(q -> q.getStatus() == QuoteStatus.PENDIENTE)
                 .count();
-
-        // Cotizaciones pagadas
-        long paidQuotes = allQuotes.stream()
-                .filter(q -> q.getStatus() == QuoteStatus.PAGADA)
+        long cotizacionesFacturadas = allQuotes.stream()
+                .filter(q -> q.getStatus() == QuoteStatus.FACTURADA)
                 .count();
-
-        // Total vendido (pagadas)
-        double totalSales = allQuotes.stream()
-                .filter(q -> q.getStatus() == QuoteStatus.PAGADA)
-                .mapToDouble(q -> q.getTotal().doubleValue())
-                .sum();
-
-        // Ventas de hoy
-        double salesToday = allQuotes.stream()
-                .filter(q -> q.getStatus() == QuoteStatus.PAGADA && q.getCreatedAt().isAfter(today))
-                .mapToDouble(q -> q.getTotal().doubleValue())
-                .sum();
-
-        // Ventas últimos 7 días
-        double salesLast7Days = allQuotes.stream()
-                .filter(q -> q.getStatus() == QuoteStatus.PAGADA && q.getCreatedAt().isAfter(last7Days))
-                .mapToDouble(q -> q.getTotal().doubleValue())
-                .sum();
-
-        // Tasa de conversión
-        double conversionRate = allQuotes.size() > 0 ? (paidQuotes * 100.0) / allQuotes.size() : 0;
-
-        Map<String, Object> dashboard = new HashMap<>();
-        dashboard.put("quotesToday", quotesToday);
-        dashboard.put("pendingQuotes", pendingQuotes);
-        dashboard.put("paidQuotes", paidQuotes);
-        dashboard.put("totalSales", totalSales);
-        dashboard.put("salesToday", salesToday);
-        dashboard.put("salesLast7Days", salesLast7Days);
-        dashboard.put("conversionRate", conversionRate);
-        dashboard.put("totalQuotes", allQuotes.size());
-
+        
+        // Calcular montos
+        BigDecimal ventasHoy = todayQuotes.stream()
+                .filter(q -> q.getStatus() == QuoteStatus.FACTURADA)
+                .map(Quote::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        
+        BigDecimal ventas7Dias = last7DaysQuotes.stream()
+                .filter(q -> q.getStatus() == QuoteStatus.FACTURADA)
+                .map(Quote::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        
+        BigDecimal totalVendido = allQuotes.stream()
+                .filter(q -> q.getStatus() == QuoteStatus.FACTURADA)
+                .map(Quote::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        
+        // Calcular tasa de conversión
+        double tasaConversion = totalCotizaciones > 0 
+                ? (cotizacionesFacturadas * 100.0 / totalCotizaciones) 
+                : 0.0;
+        
+        dashboard.put("totalCotizaciones", totalCotizaciones);
+        dashboard.put("cotizacionesHoy", cotizacionesHoy);
+        dashboard.put("cotizacionesPendientes", cotizacionesPendientes);
+        dashboard.put("cotizacionesFacturadas", cotizacionesFacturadas);
+        dashboard.put("ventasHoy", ventasHoy);
+        dashboard.put("ventas7Dias", ventas7Dias);
+        dashboard.put("totalVendido", totalVendido);
+        dashboard.put("tasaConversion", tasaConversion);
+        
+        log.info("✅ Dashboard calculado: {} cotizaciones, S/ {} ventas hoy", 
+                cotizacionesHoy, ventasHoy);
+        
         return dashboard;
     }
 }

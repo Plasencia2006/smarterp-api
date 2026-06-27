@@ -21,12 +21,12 @@ import org.springframework.web.cors.CorsConfigurationSource;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
-    private final CorsConfigurationSource corsConfigurationSource; // ✅ AGREGAR
+    private final CorsConfigurationSource corsConfigurationSource;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // ✅ HABILITAR CORS (ESTA ES LA LÍNEA CLAVE)
+                // ✅ HABILITAR CORS
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
 
                 // ✅ DESHABILITAR CSRF
@@ -37,21 +37,28 @@ public class SecurityConfig {
 
                 // ✅ AUTORIZACIONES
                 .authorizeHttpRequests(auth -> auth
-                        // Públicos
+                        // 🔓 PÚBLICOS - Recursos estáticos y endpoints públicos
                         .requestMatchers("/test/**").permitAll()
                         .requestMatchers("/api/test/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
 
+                        // ✅ 🖼️ IMÁGENES DE PRODUCTOS - PÚBLICAS (sin autenticación)
+                        .requestMatchers("/api/inventory/products/images/**").permitAll()
+                        .requestMatchers("/uploads/**").permitAll()
+
                         // ✅ PERMITIR PREFLIGHT CORS (OPTIONS)
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // Por rol
+                        // 🔐 Por rol (IMPORTANTE: el orden importa)
                         .requestMatchers("/api/cashier/**").hasAnyRole("CAJERO", "ADMIN")
                         .requestMatchers("/api/sales/**").hasAnyRole("VENDEDOR", "ADMIN")
                         .requestMatchers("/api/inventory/**").hasAnyRole("INVENTARIO", "ADMIN")
                         .requestMatchers("/api/accounting/**").hasAnyRole("CONTADOR", "ADMIN")
                         .requestMatchers("/api/support/**").hasAnyRole("SOPORTE", "ADMIN")
+
+                        // ✅ ADMIN - Endpoints administrativos
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
                         // Cualquier otra requiere autenticación
                         .anyRequest().authenticated())

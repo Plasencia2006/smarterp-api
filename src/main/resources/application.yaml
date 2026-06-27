@@ -30,8 +30,12 @@ spring:
   
   jackson:
     time-zone: UTC
-    # NO usar serialization.WRITE_DATES_AS_TIMESTAMPS en Spring Boot 4.x
-    # En su lugar, usaremos una clase de configuración
+  
+  # ✅ UNIFICADO: Multipart dentro de spring
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
 
 server:
   port: 8080
@@ -42,6 +46,11 @@ jwt:
   secret: "django-insecure-smarterp-clave-secreta-2024-abc123xyz"
   expiration: 86400000
   refresh-expiration: 604800000
+
+#  Configuración de uploads
+app:
+  upload:
+    path: ./uploads
 
 logging:
   level:

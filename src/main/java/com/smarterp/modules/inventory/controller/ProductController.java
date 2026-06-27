@@ -8,10 +8,14 @@ import com.smarterp.modules.inventory.entity.Stock;
 import com.smarterp.modules.inventory.repository.ProductCategoryRepository;
 import com.smarterp.modules.inventory.repository.ProductRepository;
 import com.smarterp.modules.inventory.repository.StockRepository;
+import com.smarterp.modules.inventory.service.ProductImageService;
+
+import java.io.IOException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -25,6 +29,7 @@ public class ProductController {
     private final StockRepository stockRepository;
     private final ProductCategoryRepository categoryRepository;
     private final UserContext userContext;
+    private final ProductImageService imageService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<Product>>> getProducts(
@@ -148,5 +153,36 @@ public class ProductController {
         productRepository.deleteById(id);
 
         return ResponseEntity.ok(ApiResponse.success("Producto eliminado", null));
+    }
+        /**
+     * 📤 SUBIR IMAGEN
+     */
+    @PostMapping("/{id}/upload-image")
+    public ResponseEntity<ApiResponse<Product>> uploadProductImage(
+            @PathVariable String id,
+            @RequestParam("image") MultipartFile file) {
+        
+        try {
+            Product product = productRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Producto no encontrado"));
+
+            // Eliminar imagen anterior si existe
+            if (product.getImagePath() != null && !product.getImagePath().isEmpty()) {
+                imageService.deleteImage(product.getImagePath());
+            }
+
+            // Subir nueva imagen
+            String filename = imageService.uploadImage(file, id);
+            
+            // Actualizar producto
+            product.setImagePath(filename);
+            product.setImageUrl(imageService.getImageUrl(filename));
+            
+            Product updated = productRepository.save(product);
+            return ResponseEntity.ok(ApiResponse.success("Imagen actualizada", updated));
+        } catch (IOException e) {
+            log.error("❌ Error al subir imagen: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
     }
 }

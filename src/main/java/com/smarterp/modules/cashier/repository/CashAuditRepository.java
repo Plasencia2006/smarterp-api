@@ -14,28 +14,28 @@ import java.util.Optional;
 @Repository
 public interface CashAuditRepository extends JpaRepository<CashAudit, String> {
 
-    List<CashAudit> findByRegisterIdOrderByCreatedAtDesc(String registerId);
+        List<CashAudit> findByRegisterIdOrderByCreatedAtDesc(String registerId);
 
-    List<CashAudit> findByBusinessIdOrderByCreatedAtDesc(String businessId);
+        List<CashAudit> findByBusinessIdOrderByCreatedAtDesc(String businessId);
 
-    List<CashAudit> findByRegisterIdAndStatus(String registerId, AuditStatus status);
+        List<CashAudit> findByRegisterIdAndStatus(String registerId, AuditStatus status);
 
-    Optional<CashAudit> findTopByRegisterIdAndStatusOrderByStartedAtDesc(
-            String registerId, AuditStatus status);
+        Optional<CashAudit> findTopByRegisterIdAndStatusOrderByStartedAtDesc(
+                        String registerId, AuditStatus status);
 
-    @Query("SELECT a FROM CashAudit a WHERE a.registerId = :registerId " +
-            "AND a.startedAt BETWEEN :start AND :end " +
-            "ORDER BY a.startedAt DESC")
-    List<CashAudit> findByRegisterIdAndDateRange(
-            @Param("registerId") String registerId,
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end);
+        @Query("SELECT a FROM CashAudit a WHERE a.registerId = :registerId " +
+                        "AND a.startedAt BETWEEN :start AND :end " +
+                        "ORDER BY a.startedAt DESC")
+        List<CashAudit> findByRegisterIdAndDateRange(
+                        @Param("registerId") String registerId,
+                        @Param("start") LocalDateTime start,
+                        @Param("end") LocalDateTime end);
 
-    @Query("SELECT COUNT(a) FROM CashAudit a WHERE a.registerId = :registerId " +
-            "AND a.status = 'DISCORDANTE'")
-    Long countDiscrepanciesByRegisterId(@Param("registerId") String registerId);
+        @Query("SELECT COUNT(a) FROM CashAudit a WHERE a.registerId = :registerId " +
+                        "AND a.status = 'DISCORDANTE'")
+        Long countDiscrepanciesByRegisterId(@Param("registerId") String registerId);
 
-    @Query("SELECT COALESCE(SUM(ABS(a.difference)), 0) FROM CashAudit a " +
-            "WHERE a.registerId = :registerId AND a.status = 'DISCORDANTE'")
-    java.math.BigDecimal sumAbsoluteDifferencesByRegisterId(@Param("registerId") String registerId);
+        @Query("SELECT COALESCE(SUM(ABS(a.difference)), 0) FROM CashAudit a " +
+                        "WHERE a.registerId = :registerId AND a.status = 'DISCORDANTE'")
+        java.math.BigDecimal sumAbsoluteDifferencesByRegisterId(@Param("registerId") String registerId);
 }

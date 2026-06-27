@@ -33,6 +33,12 @@ public class Product {
     @Column(length = 1000)
     private String description;
 
+    @Column(name = "image_url", length = 1000)
+    private String imageUrl;
+
+    @Column(name = "image_path")
+    private String imagePath;
+
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price;
 

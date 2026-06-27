@@ -3,6 +3,7 @@ package com.smarterp.modules.sales.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -64,7 +65,7 @@ public class Quote {
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 
-    //  CAMPOS PARA BLOQUEO TEMPORAL
+    // CAMPOS PARA BLOQUEO TEMPORAL
     @Column(name = "blocked_until")
     private LocalDateTime blockedUntil;
 
@@ -74,7 +75,7 @@ public class Quote {
     @Column(name = "block_duration_minutes")
     private Integer blockDurationMinutes;
 
-    //  NUEVOS CAMPOS PARA FACTURACIÓN
+    // NUEVOS CAMPOS PARA FACTURACIÓN
     @Column(name = "invoice_number")
     private String invoiceNumber;
 
@@ -161,7 +162,7 @@ public class Quote {
         this.total = this.subtotal.add(this.igv);
     }
 
-    //  MÉTODOS PARA BLOQUEO
+    // ✅ MÉTODOS PARA BLOQUEO
     public boolean isExpired() {
         if (this.blockedUntil == null || this.isBlocked == null || !this.isBlocked) {
             return false;
@@ -173,14 +174,15 @@ public class Quote {
         if (this.blockedUntil == null) {
             return 0;
         }
-        return java.time.Duration.between(LocalDateTime.now(), this.blockedUntil).toMinutes();
+        long minutes = java.time.Duration.between(LocalDateTime.now(), this.blockedUntil).toMinutes();
+        return Math.max(0, minutes);
     }
 
     public void activateBlock(int minutes) {
         this.isBlocked = true;
         this.blockDurationMinutes = minutes;
         this.blockedUntil = LocalDateTime.now().plusMinutes(minutes);
-        System.out.println(" Bloqueo activado: " + minutes + " minutos (hasta " + this.blockedUntil + ")");
+        System.out.println("🔒 Bloqueo activado: " + minutes + " minutos (hasta " + this.blockedUntil + ")");
     }
 
     public void releaseBlock() {
@@ -189,9 +191,9 @@ public class Quote {
         this.blockDurationMinutes = null;
     }
 
-    //  NUEVO MÉTODO: Generar número de factura
+    // ✅ NUEVO MÉTODO: Generar número de factura
     public String generateInvoiceNumber() {
-        String date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String date = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         String random = String.format("%04d", System.currentTimeMillis() % 10000);
         return "F-" + date + "-" + random;
     }

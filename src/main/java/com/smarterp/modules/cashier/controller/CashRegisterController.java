@@ -27,7 +27,7 @@ public class CashRegisterController {
     private final UserContext userContext;
 
     /**
-     *  BUSCAR COTIZACIÓN POR NÚMERO
+     * 🔍 BUSCAR COTIZACIÓN POR NÚMERO
      */
     @GetMapping("/quote/search")
     public ResponseEntity<ApiResponse<QuoteSearchResponse>> searchQuote(
@@ -35,19 +35,19 @@ public class CashRegisterController {
 
         String businessId = userContext.getCurrentBusinessId();
 
-        log.info(" Cajero buscando cotización: {}", number);
+        log.info("🔍 Cajero buscando cotización: {}", number);
 
         try {
             QuoteSearchResponse response = cashierService.searchQuote(number, businessId);
             return ResponseEntity.ok(ApiResponse.success(response));
         } catch (Exception e) {
-            log.error(" Error al buscar cotización: {}", e.getMessage());
+            log.error("❌ Error al buscar cotización: {}", e.getMessage());
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
     }
 
     /**
-     * VALIDAR COTIZACIÓN ANTES DE PAGAR
+     * ✅ VALIDAR COTIZACIÓN ANTES DE PAGAR
      */
     @PostMapping("/quote/validate")
     public ResponseEntity<ApiResponse<QuoteValidationResponse>> validateQuote(
@@ -59,7 +59,7 @@ public class CashRegisterController {
         @SuppressWarnings("unchecked")
         Map<String, List<String>> serialNumbers = (Map<String, List<String>>) request.get("serialNumbers");
 
-        log.info(" Validando cotización: {}", quoteNumber);
+        log.info("✅ Validando cotización: {}", quoteNumber);
 
         try {
             QuoteValidationResponse response = cashierService.validateQuote(
@@ -71,7 +71,7 @@ public class CashRegisterController {
     }
 
     /**
-     *  APERTURA DE CAJA
+     * 🟢 APERTURA DE CAJA
      */
     @PostMapping("/register/open")
     public ResponseEntity<ApiResponse<CashRegister>> openRegister(
@@ -94,7 +94,7 @@ public class CashRegisterController {
     }
 
     /**
-     *  CIERRE DE CAJA
+     * 🔴 CIERRE DE CAJA
      */
     @PostMapping("/register/{id}/close")
     public ResponseEntity<ApiResponse<CashRegister>> closeRegister(
@@ -117,7 +117,7 @@ public class CashRegisterController {
     }
 
     /**
-     *  PROCESAR PAGO DE COTIZACIÓN
+     * 💰 PROCESAR PAGO DE COTIZACIÓN
      */
     @PostMapping("/payment/process")
     public ResponseEntity<ApiResponse<PaymentResponse>> processPayment(
@@ -128,7 +128,7 @@ public class CashRegisterController {
         String userId = userContext.getCurrentUserId();
         String userName = getUserName(authentication);
 
-        log.info(" Procesando pago - Cotización: {} - Método: {}", request.getQuoteNumber(),
+        log.info("💰 Procesando pago - Cotización: {} - Método: {}", request.getQuoteNumber(),
                 request.getPaymentMethod());
 
         try {
@@ -141,7 +141,7 @@ public class CashRegisterController {
     }
 
     /**
-     *  REGISTRAR EGRESO
+     * 💸 REGISTRAR EGRESO
      */
     @PostMapping("/expense")
     public ResponseEntity<ApiResponse<CashTransaction>> registerExpense(
@@ -167,7 +167,7 @@ public class CashRegisterController {
     }
 
     /**
-     *  OBTENER TURNO ACTIVO
+     * 📊 OBTENER TURNO ACTIVO
      */
     @GetMapping("/register/active")
     public ResponseEntity<ApiResponse<CashRegister>> getActiveRegister() {
@@ -181,20 +181,25 @@ public class CashRegisterController {
     }
 
     /**
-     *  HISTORIAL DE TURNOS
+     * 📋 HISTORIAL DE TURNOS - ✅ UN SOLO MÉTODO (FILTRADO POR USUARIO ACTUAL)
      */
     @GetMapping("/register/history")
-    public ResponseEntity<ApiResponse<List<CashRegister>>> getRegisterHistory(
-            @RequestParam(required = false) String userId) {
-
+    public ResponseEntity<ApiResponse<List<CashRegister>>> getRegisterHistory() {
         String businessId = userContext.getCurrentBusinessId();
+        String userId = userContext.getCurrentUserId(); // ✅ Obtener userId del contexto
+
+        log.info("📋 Obteniendo historial de turnos - Business: {}, Cajero: {}", businessId, userId);
+
+        // ✅ Filtrar SOLO los turnos del cajero actual
         List<CashRegister> registers = cashierService.getRegisterHistory(businessId, userId);
+
+        log.info("✅ {} turnos encontrados para cajero {}", registers.size(), userId);
 
         return ResponseEntity.ok(ApiResponse.success(registers));
     }
 
     /**
-     *  TRANSACCIONES DEL TURNO
+     * 💵 TRANSACCIONES DEL TURNO
      */
     @GetMapping("/register/{id}/transactions")
     public ResponseEntity<ApiResponse<List<CashTransaction>>> getRegisterTransactions(
@@ -232,6 +237,32 @@ public class CashRegisterController {
     }
 
     /**
+     * 🛒 VENTA DIRECTA (sin cotización previa)
+     */
+    @PostMapping("/sale/direct")
+    public ResponseEntity<ApiResponse<PaymentResponse>> processDirectSale(
+            @RequestBody DirectSaleRequest request,
+            Authentication authentication) {
+
+        String businessId = userContext.getCurrentBusinessId();
+        String userId = userContext.getCurrentUserId();
+        String userName = getUserName(authentication);
+
+        log.info("🛒 Venta directa - Cliente: {} - Items: {}",
+                request.getCustomerName(), request.getItems().size());
+
+        try {
+            PaymentResponse response = cashierService.processDirectSale(
+                    businessId, userId, userName, request);
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Venta procesada correctamente", response));
+        } catch (Exception e) {
+            log.error("❌ Error en venta directa: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    /**
      * 🔧 MÉTODO AUXILIAR
      */
     private String getUserName(Authentication authentication) {
@@ -248,31 +279,4 @@ public class CashRegisterController {
 
         return principal != null ? principal.toString() : "Cajero";
     }
-
-    /**
- * 🛒 VENTA DIRECTA (sin cotización previa)
- * POST /cashier/sale/direct
- */
-@PostMapping("/sale/direct")
-public ResponseEntity<ApiResponse<PaymentResponse>> processDirectSale(
-        @RequestBody DirectSaleRequest request,
-        Authentication authentication) {
-    
-    String businessId = userContext.getCurrentBusinessId();
-    String userId = userContext.getCurrentUserId();
-    String userName = getUserName(authentication);
-
-    log.info("🛒 Venta directa - Cliente: {} - Items: {}", 
-            request.getCustomerName(), request.getItems().size());
-
-    try {
-        PaymentResponse response = cashierService.processDirectSale(
-                businessId, userId, userName, request);
-        return ResponseEntity.ok(ApiResponse.success(
-                "Venta procesada correctamente", response));
-    } catch (Exception e) {
-        log.error("❌ Error en venta directa: {}", e.getMessage());
-        return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
-    }
-}
 }

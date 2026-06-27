@@ -3,6 +3,8 @@ package com.smarterp.modules.sales.controller;
 import com.smarterp.common.response.ApiResponse;
 import com.smarterp.common.utils.UserContext;
 import com.smarterp.modules.cashier.dto.QuoteSearchResponse;
+import com.smarterp.modules.inventory.entity.Stock;
+import com.smarterp.modules.inventory.repository.StockRepository;
 import com.smarterp.modules.sales.dto.QuoteRequest;
 import com.smarterp.modules.sales.entity.Quote;
 import com.smarterp.modules.sales.entity.QuoteItem;
@@ -34,6 +36,7 @@ public class QuoteController {
     private final QuotePdfService quotePdfService;
     private final InvoicePdfService invoicePdfService;
     private final UserContext userContext;
+    private final StockRepository stockRepository;
 
     @Autowired
     private QuoteRepository quoteRepository;
@@ -67,15 +70,17 @@ public class QuoteController {
             @RequestParam(required = false) Integer minutes) {
 
         String businessId = userContext.getCurrentBusinessId();
+        String userId = userContext.getCurrentUserId();
         int blockMinutes = (minutes != null) ? minutes : 20;
 
-        log.info("🔒 Bloqueando cotización: {} por {} minutos", id, blockMinutes);
+        log.info("🔒 Bloqueando cotización: {} por {} minutos - Usuario: {}", id, blockMinutes, userId);
 
         try {
             Quote quote = quoteService.blockQuote(id, businessId, blockMinutes);
             return ResponseEntity.ok(ApiResponse.success(
                     "Cotización bloqueada por " + blockMinutes + " minutos", quote));
         } catch (Exception e) {
+            log.error("❌ Error al bloquear cotización: {}", e.getMessage());
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
     }
@@ -83,44 +88,110 @@ public class QuoteController {
     @PostMapping("/{id}/release")
     public ResponseEntity<ApiResponse<Quote>> releaseBlock(@PathVariable String id) {
         String businessId = userContext.getCurrentBusinessId();
+        String userId = userContext.getCurrentUserId();
+
+        log.info("🔓 Liberando bloqueo de cotización: {} - Usuario: {}", id, userId);
 
         try {
             Quote quote = quoteService.releaseBlock(id, businessId);
             return ResponseEntity.ok(ApiResponse.success("Bloqueo liberado", quote));
         } catch (Exception e) {
+            log.error("❌ Error al liberar bloqueo: {}", e.getMessage());
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
     }
 
+    /**
+     * ✅ CONSULTAR DISPONIBILIDAD DE PRODUCTO (STOCK - BLOQUEADO)
+     */
     @GetMapping("/product/{productId}/availability")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getProductAvailability(
             @PathVariable String productId) {
 
         String businessId = userContext.getCurrentBusinessId();
-        Map<String, Object> availability = quoteService.getProductAvailability(productId, businessId);
 
-        return ResponseEntity.ok(ApiResponse.success(availability));
+        log.info("📦 Consultando disponibilidad del producto: {}", productId);
+
+        try {
+            // Buscar cotizaciones bloqueadas que contengan este producto
+            List<Quote> blockedQuotes = quoteRepository.findActiveBlockedQuotes(businessId);
+
+            // Calcular stock bloqueado
+            int blockedQuantity = blockedQuotes.stream()
+                    .filter(q -> q.getItems() != null)
+                    .flatMap(q -> q.getItems().stream())
+                    .filter(item -> item.getProductId().equals(productId))
+                    .mapToInt(QuoteItem::getQuantity)
+                    .sum();
+
+            // Obtener stock disponible
+            Stock stock = stockRepository.findByProductIdAndBusinessId(productId, businessId)
+                    .orElse(null);
+
+            int totalStock = stock != null ? stock.getQuantity() : 0;
+            int availableStock = Math.max(0, totalStock - blockedQuantity);
+
+            // Obtener información de bloqueo
+            List<String> blockedBy = blockedQuotes.stream()
+                    .filter(q -> q.getItems() != null && q.getItems().stream()
+                            .anyMatch(item -> item.getProductId().equals(productId)))
+                    .map(Quote::getSellerName)
+                    .distinct()
+                    .collect(Collectors.toList());
+
+            LocalDateTime blockedUntil = blockedQuotes.stream()
+                    .filter(q -> q.getItems() != null && q.getItems().stream()
+                            .anyMatch(item -> item.getProductId().equals(productId)))
+                    .map(Quote::getBlockedUntil)
+                    .max(LocalDateTime::compareTo)
+                    .orElse(null);
+
+            Map<String, Object> availability = new HashMap<>();
+            availability.put("productId", productId);
+            availability.put("totalStock", totalStock);
+            availability.put("blockedQuantity", blockedQuantity);
+            availability.put("availableStock", availableStock);
+            availability.put("isBlocked", blockedQuantity > 0);
+            availability.put("isAvailable", availableStock > 0);
+            availability.put("blockedBy", blockedBy);
+            availability.put("blockedUntil", blockedUntil);
+
+            log.info("✅ Disponibilidad: Total={}, Bloqueado={}, Disponible={}",
+                    totalStock, blockedQuantity, availableStock);
+
+            return ResponseEntity.ok(ApiResponse.success(availability));
+
+        } catch (Exception e) {
+            log.error("❌ Error al consultar disponibilidad: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
     }
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<Quote>>> getAllQuotes() {
         String businessId = userContext.getCurrentBusinessId();
-        return ResponseEntity.ok(ApiResponse.success(
-                quoteService.getAllQuotes(businessId)));
+        String userId = userContext.getCurrentUserId();
+
+        log.info("📋 Obteniendo cotizaciones - Business: {}, Vendedor: {}", businessId, userId);
+
+        List<Quote> quotes = quoteRepository.findByBusinessIdAndSellerIdOrderByCreatedAtDesc(
+                businessId, userId);
+
+        log.info("✅ {} cotizaciones encontradas para vendedor {}", quotes.size(), userId);
+
+        return ResponseEntity.ok(ApiResponse.success(quotes));
     }
 
-    /**
-     * 📋 OBTENER COTIZACIONES PENDIENTES (para el cajero)
-     * GET /sales/quotes/pending
-     */
     @GetMapping("/pending")
     public ResponseEntity<ApiResponse<List<QuoteSearchResponse>>> getPendingQuotes() {
         String businessId = userContext.getCurrentBusinessId();
+        String userId = userContext.getCurrentUserId();
 
-        log.info("📋 Obteniendo cotizaciones pendientes del negocio {}", businessId);
+        log.info("📋 Obteniendo cotizaciones pendientes - Business: {}, Vendedor: {}", businessId, userId);
 
         try {
-            List<Quote> pendingQuotes = quoteRepository.findPendingQuotesByBusinessId(businessId);
+            List<Quote> pendingQuotes = quoteRepository.findPendingQuotesByBusinessIdAndSellerId(
+                    businessId, userId);
 
             List<QuoteSearchResponse> response = pendingQuotes.stream()
                     .map(quote -> {
@@ -162,7 +233,7 @@ public class QuoteController {
                     })
                     .collect(Collectors.toList());
 
-            log.info("✅ {} cotizaciones pendientes encontradas", response.size());
+            log.info("✅ {} cotizaciones pendientes para vendedor {}", response.size(), userId);
             return ResponseEntity.ok(ApiResponse.success(response));
 
         } catch (Exception e) {
@@ -171,10 +242,6 @@ public class QuoteController {
         }
     }
 
-    /**
-     * 🧾 LISTAR FACTURAS (para el cajero)
-     * GET /sales/quotes/invoices
-     */
     @GetMapping("/invoices")
     public ResponseEntity<ApiResponse<List<QuoteSearchResponse>>> getInvoices(
             @RequestParam(required = false) String startDate,
@@ -189,15 +256,12 @@ public class QuoteController {
             List<Quote> invoices;
 
             if (invoiceNumber != null && !invoiceNumber.isEmpty()) {
-                // Buscar por número de factura
                 invoices = quoteRepository.findByInvoiceNumberAndBusinessId(invoiceNumber, businessId)
                         .map(Collections::singletonList)
                         .orElse(Collections.emptyList());
             } else if (customerName != null && !customerName.isEmpty()) {
-                // Buscar por cliente
                 invoices = quoteRepository.findInvoicesByCustomerName(businessId, customerName);
             } else {
-                // Listar todas las facturas del día por defecto
                 LocalDateTime start = startDate != null ? LocalDateTime.parse(startDate + "T00:00:00")
                         : LocalDateTime.now().toLocalDate().atStartOfDay();
                 LocalDateTime end = endDate != null ? LocalDateTime.parse(endDate + "T23:59:59") : LocalDateTime.now();
@@ -205,12 +269,10 @@ public class QuoteController {
                 invoices = quoteRepository.findInvoicesByBusinessIdAndDateRange(businessId, start, end);
             }
 
-            // Filtrar solo las FACTURADAS
             invoices = invoices.stream()
                     .filter(q -> q.getStatus() == QuoteStatus.FACTURADA)
                     .collect(Collectors.toList());
 
-            // Convertir a QuoteSearchResponse
             List<QuoteSearchResponse> response = invoices.stream()
                     .map(quote -> QuoteSearchResponse.builder()
                             .id(quote.getId())
@@ -260,138 +322,79 @@ public class QuoteController {
     @GetMapping("/dashboard")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getVendedorDashboard() {
         String businessId = userContext.getCurrentBusinessId();
-        Map<String, Object> dashboard = quoteService.getVendedorDashboard(businessId);
-        return ResponseEntity.ok(ApiResponse.success(dashboard));
+        String sellerId = userContext.getCurrentUserId(); // Email del vendedor
+
+        log.info("📊 Obteniendo dashboard - Business: {}, Vendedor: {}", businessId, sellerId);
+
+        try {
+            Map<String, Object> dashboard = quoteService.getVendedorDashboard(businessId, sellerId);
+            return ResponseEntity.ok(ApiResponse.success(dashboard));
+        } catch (Exception e) {
+            log.error("❌ Error al obtener dashboard: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
     }
 
-    /**
-     * 📄 GENERAR PDF DE COTIZACIÓN
-     * GET /sales/quotes/{id}/pdf
-     */
     @GetMapping("/{id}/pdf")
     public ResponseEntity<byte[]> downloadQuotePdf(@PathVariable String id) {
         String businessId = userContext.getCurrentBusinessId();
 
-        log.info("📄 Generando PDF para cotización ID: {}", id);
-        log.info("   Business ID: {}", businessId);
-
         try {
             Quote quote = quoteRepository.findById(id)
-                    .orElseThrow(() -> {
-                        log.error("❌ Cotización no encontrada: {}", id);
-                        return new RuntimeException("Cotización no encontrada con ID: " + id);
-                    });
-
-            log.info("✅ Cotización encontrada: {}", quote.getQuoteNumber());
-            log.info("   Cliente: {}", quote.getCustomerName());
-            log.info("   Total: {}", quote.getTotal());
-            log.info("   Items: {}", quote.getItems().size());
+                    .orElseThrow(() -> new RuntimeException("Cotización no encontrada"));
 
             if (!quote.getBusinessId().equals(businessId)) {
-                log.error("❌ No tiene permisos para esta cotización");
-                throw new RuntimeException("No tiene permisos para acceder a esta cotización");
+                throw new RuntimeException("No tiene permisos");
             }
 
-            log.info("🔨 Generando PDF...");
             byte[] pdfContent = quotePdfService.generateQuotePdf(quote);
-            log.info("✅ PDF generado exitosamente. Tamaño: {} bytes", pdfContent.length);
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
             headers.setContentDispositionFormData("attachment",
                     "cotizacion_" + quote.getQuoteNumber() + ".pdf");
-            headers.setCacheControl("must-revalidate, post-check=0, pre-check=0");
 
             return new ResponseEntity<>(pdfContent, headers, HttpStatus.OK);
         } catch (Exception e) {
             log.error("❌ ERROR al generar PDF:", e);
-            log.error("   Mensaje: {}", e.getMessage());
-            e.printStackTrace();
             return ResponseEntity.badRequest().build();
         }
     }
 
-    /**
-     * 🧾 GENERAR PDF DE FACTURA
-     * GET /sales/quotes/{id}/invoice/pdf
-     */
     @GetMapping("/{id}/invoice/pdf")
     public ResponseEntity<byte[]> downloadInvoicePdf(@PathVariable String id) {
         String businessId = userContext.getCurrentBusinessId();
 
-        log.info("🧾 Generando PDF de factura para cotización ID: {}", id);
-        log.info("   Business ID del request: {}", businessId);
-
         try {
             Quote quote = quoteRepository.findById(id)
-                    .orElseThrow(() -> {
-                        log.error("❌ Cotización no encontrada: {}", id);
-                        return new RuntimeException("Cotización no encontrada con ID: " + id);
-                    });
+                    .orElseThrow(() -> new RuntimeException("Cotización no encontrada"));
 
-            log.info("✅ Cotización encontrada: {}", quote.getQuoteNumber());
-            log.info("   Status: {}", quote.getStatus());
-            log.info("   Business ID de la cotización: {}", quote.getBusinessId());
-            log.info("   Invoice Number: {}", quote.getInvoiceNumber());
-
-            // ✅ Verificar que esté facturada
             if (quote.getStatus() != QuoteStatus.FACTURADA) {
-                log.error("❌ La cotización no está facturada. Status: {}", quote.getStatus());
-                throw new RuntimeException("La cotización no está facturada. Estado: " + quote.getStatus());
+                throw new RuntimeException("La cotización no está facturada");
             }
 
-            // ⚠️ TEMPORAL: Comentar validación de business_id hasta arreglar JWT
-            /*
-             * if (!quote.getBusinessId().equals(businessId)) {
-             * log.error("❌ Business ID no coincide. Request: {}, Cotización: {}",
-             * businessId, quote.getBusinessId());
-             * throw new RuntimeException("No tiene permisos para acceder a esta factura");
-             * }
-             */
-
-            log.info("⚠️  Validación de business_id omitida (modo desarrollo)");
-
-            log.info("🔨 Generando PDF de factura...");
             byte[] pdfContent = invoicePdfService.generateInvoicePdf(quote);
-            log.info("✅ Factura PDF generada exitosamente. Tamaño: {} bytes", pdfContent.length);
-
-            if (pdfContent.length == 0) {
-                log.error("❌ El PDF generado está vacío");
-                throw new RuntimeException("Error al generar PDF: documento vacío");
-            }
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
             headers.setContentDispositionFormData("inline",
                     "factura_" + quote.getInvoiceNumber() + ".pdf");
-            headers.setCacheControl("must-revalidate, post-check=0, pre-check=0");
 
             return new ResponseEntity<>(pdfContent, headers, HttpStatus.OK);
-
         } catch (Exception e) {
             log.error("❌ ERROR al generar factura PDF:", e);
-            log.error("   Mensaje: {}", e.getMessage());
-            e.printStackTrace();
             return ResponseEntity.badRequest().build();
         }
     }
 
-    /**
-     * 🔍 Verificar si un producto requiere número de serie
-     */
     private boolean requiresSerialNumber(String productName) {
         if (productName == null)
             return false;
         String lower = productName.toLowerCase();
-        return lower.contains("celular") ||
-                lower.contains("laptop") ||
-                lower.contains("computadora") ||
-                lower.contains("tablet") ||
-                lower.contains("smartphone") ||
-                lower.contains("iphone") ||
-                lower.contains("samsung") ||
-                lower.contains("xiaomi") ||
-                lower.contains("tv") ||
-                lower.contains("televisor");
+        return lower.contains("celular") || lower.contains("laptop") ||
+                lower.contains("computadora") || lower.contains("tablet") ||
+                lower.contains("smartphone") || lower.contains("iphone") ||
+                lower.contains("samsung") || lower.contains("xiaomi") ||
+                lower.contains("tv") || lower.contains("televisor");
     }
 }

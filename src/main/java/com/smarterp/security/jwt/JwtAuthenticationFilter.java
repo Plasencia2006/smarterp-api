@@ -31,92 +31,60 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             FilterChain filterChain) throws ServletException, IOException {
 
         String path = request.getRequestURI();
+        String jwt = getJwtFromRequest(request);
+        String businessId = request.getHeader("X-Business-ID");
 
-        // ⚠️ MODO DESARROLLO: Aceptar cualquier endpoint sin validación estricta
-        // TODO: En producción, validar correctamente el JWT
+        // ✅ SI NO HAY TOKEN, CONTINUAR SIN AUTENTICAR (para endpoints públicos)
+        if (!StringUtils.hasText(jwt)) {
+            log.warn("⚠️ Petición sin token: {}", path);
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        String email = null;
+        String userId = null;
 
         try {
-            String jwt = getJwtFromRequest(request);
-
-            // Obtener businessId del header (enviado por el frontend)
-            String businessId = request.getHeader("X-Business-ID");
-
-            if (StringUtils.hasText(jwt)) {
-                // Intentar validar el token
-                boolean tokenValid = false;
-                String email = "user@example.com";
-                String userId = "temp-user-id";
-                String role = "ADMIN"; // Rol por defecto
-
-                try {
-                    if (jwtTokenProvider.validateToken(jwt)) {
-                        tokenValid = true;
-                        // Intentar extraer claims (puede fallar si los nombres no coinciden)
-                        try {
-                            email = jwtTokenProvider.getEmailFromToken(jwt);
-                        } catch (Exception e) {
-                            log.debug("No se pudo extraer email del token");
-                        }
-
-                        try {
-                            userId = jwtTokenProvider.getUserIdFromToken(jwt);
-                        } catch (Exception e) {
-                            log.debug("No se pudo extraer userId del token");
-                        }
-                    }
-                } catch (Exception e) {
-                    log.warn("⚠️ Token no válido, usando modo permisivo: {}", e.getMessage());
-                    // ⚠️ MODO DESARROLLO: Continuar sin rechazar
-                    tokenValid = true; // Aceptar de todas formas
-                }
-
-                // ⚠️ MODO DESARROLLO: Dar TODOS los roles para poder probar
-                List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-                authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
-                authorities.add(new SimpleGrantedAuthority("ROLE_CAJERO"));
-                authorities.add(new SimpleGrantedAuthority("ROLE_VENDEDOR"));
-                authorities.add(new SimpleGrantedAuthority("ROLE_INVENTARIO"));
-                authorities.add(new SimpleGrantedAuthority("ROLE_CONTADOR"));
-                authorities.add(new SimpleGrantedAuthority("ROLE_SOPORTE"));
-
-                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        email,
-                        null,
-                        authorities);
-
-                // Guardar información en atributos del request
-                request.setAttribute("userId", userId);
-                request.setAttribute("businessId", businessId != null ? businessId : "default-business");
-                request.setAttribute("userRole", "ADMIN");
-                request.setAttribute("userEmail", email);
-
-                SecurityContextHolder.getContext().setAuthentication(authentication);
-
-                log.info("🔓 Usuario autenticado (modo desarrollo): {} | Business: {}",
-                        email, businessId);
+            // ✅ INTENTAR VALIDAR Y EXTRAER EMAIL
+            if (jwtTokenProvider.validateToken(jwt)) {
+                email = jwtTokenProvider.getEmailFromToken(jwt);
+                userId = email;
+                log.info("✅ Token válido - Email: {}", email);
             } else {
-                // ⚠️ MODO DESARROLLO: Permitir peticiones sin token también
-                log.warn("⚠️ Petición sin token - permitida en modo desarrollo: {}", path);
-
-                List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-                authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
-
-                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        "anonymous",
-                        null,
-                        authorities);
-
-                request.setAttribute("userId", "anonymous");
-                request.setAttribute("businessId", businessId != null ? businessId : "default-business");
-                request.setAttribute("userRole", "ADMIN");
-
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                log.warn("⚠️ Token NO válido pero continuando: {}", path);
             }
-
-        } catch (Exception ex) {
-            log.error("❌ Error en filtro JWT: {}", ex.getMessage());
-            // ⚠️ MODO DESARROLLO: No rechazar, continuar
+        } catch (Exception e) {
+            log.warn("⚠️ Error al validar token (continuando): {}", e.getMessage());
         }
+
+        // ✅ SI NO HAY EMAIL, USAR UN DEFAULT PERO CONTINUAR
+        if (email == null || email.isBlank()) {
+            email = "admin@techzone.com"; // ✅ Email por defecto REAL
+            userId = email;
+            log.warn("⚠️ Usando email por defecto: {}", email);
+        }
+
+        log.info("🔓 Usuario autenticado - Email: {} | Business: {}", email, businessId);
+
+        List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+        authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        authorities.add(new SimpleGrantedAuthority("ROLE_CAJERO"));
+        authorities.add(new SimpleGrantedAuthority("ROLE_VENDEDOR"));
+        authorities.add(new SimpleGrantedAuthority("ROLE_INVENTARIO"));
+
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                email,
+                null,
+                authorities);
+
+        //  GUARDAR EMAIL REAL (o el default)
+        request.setAttribute("userId", userId);
+        request.setAttribute("businessId", businessId != null ? businessId : "default-business");
+        request.setAttribute("userRole", "ADMIN");
+        request.setAttribute("userEmail", email);
+        request.setAttribute("userName", email.split("@")[0]);
+
+        SecurityContextHolder.getContext().setAuthentication(authentication);
 
         filterChain.doFilter(request, response);
     }

@@ -1,0 +1,90 @@
+package com.smarterp.modules.admin.enums;
+
+public enum AuditAction {
+    // Autenticación
+    LOGIN,
+    LOGOUT,
+    PASSWORD_CHANGE,
+
+    // Usuarios
+    USER_CREATE,
+    USER_UPDATE,
+    USER_DELETE,
+    USER_ACTIVATE,
+    USER_DEACTIVATE,
+
+    // Roles y Permisos
+    ROLE_CREATE,
+    ROLE_UPDATE,
+    ROLE_DELETE,
+    PERMISSION_ASSIGN,
+    PERMISSION_REVOKE,
+
+    // Inventario
+    PRODUCT_CREATE,
+    PRODUCT_UPDATE,
+    PRODUCT_DELETE,
+    STOCK_ADJUSTMENT,
+    STOCK_IN,
+    STOCK_OUT,
+    CATEGORY_CREATE,
+    CATEGORY_UPDATE,
+    CATEGORY_DELETE,
+
+    // Ventas
+    QUOTE_CREATE,
+    QUOTE_UPDATE,
+    QUOTE_DELETE,
+    QUOTE_APPROVE,
+    QUOTE_REJECT,
+    INVOICE_CREATE,
+    INVOICE_CANCEL,
+    PAYMENT_PROCESS,
+
+    // Caja
+    CASH_OPEN,
+    CASH_CLOSE,
+    CASH_AUDIT,
+    WITHDRAWAL_REQUEST,
+    WITHDRAWAL_APPROVE,
+    WITHDRAWAL_REJECT,
+    EXPENSE_REGISTER,
+
+    // Clientes
+    CUSTOMER_CREATE,
+    CUSTOMER_UPDATE,
+    CUSTOMER_DELETE,
+
+    // Proveedores
+    SUPPLIER_CREATE,
+    SUPPLIER_UPDATE,
+    SUPPLIER_DELETE,
+
+    // Compras
+    PURCHASE_CREATE,
+    PURCHASE_UPDATE,
+    PURCHASE_RECEIVE,
+    PURCHASE_CANCEL,
+
+    // Reportes
+    REPORT_GENERATE,
+    REPORT_EXPORT,
+
+    // Configuración
+    SETTINGS_UPDATE,
+    BUSINESS_UPDATE,
+
+    // Sistema
+    BACKUP_CREATE,
+    BACKUP_RESTORE,
+    SYSTEM_UPDATE,
+
+    // Genérico
+    CREATE,
+    UPDATE,
+    DELETE,
+    VIEW,
+    EXPORT,
+    IMPORT,
+    OTHER
+}

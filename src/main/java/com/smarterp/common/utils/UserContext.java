@@ -1,6 +1,7 @@
 package com.smarterp.common.utils;
 
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -8,6 +9,7 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 @Component
+@Slf4j
 public class UserContext {
 
     /**
@@ -15,7 +17,9 @@ public class UserContext {
      */
     public String getCurrentUserEmail() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return auth != null && auth.isAuthenticated() ? auth.getName() : null;
+        String email = auth != null && auth.isAuthenticated() ? auth.getName() : null;
+        log.debug("📧 CurrentUserEmail: {}", email);
+        return email;
     }
 
     /**
@@ -23,7 +27,9 @@ public class UserContext {
      */
     public String getCurrentUserId() {
         HttpServletRequest request = getCurrentRequest();
-        return request != null ? (String) request.getAttribute("userId") : null;
+        String userId = request != null ? (String) request.getAttribute("userId") : null;
+        log.debug("👤 CurrentUserId: {}", userId);
+        return userId;
     }
 
     /**
@@ -31,7 +37,9 @@ public class UserContext {
      */
     public String getCurrentBusinessId() {
         HttpServletRequest request = getCurrentRequest();
-        return request != null ? (String) request.getAttribute("businessId") : null;
+        String businessId = request != null ? (String) request.getAttribute("businessId") : null;
+        log.debug("🏢 CurrentBusinessId: {}", businessId);
+        return businessId;
     }
 
     /**
@@ -39,7 +47,9 @@ public class UserContext {
      */
     public String getCurrentUserRole() {
         HttpServletRequest request = getCurrentRequest();
-        return request != null ? (String) request.getAttribute("userRole") : null;
+        String role = request != null ? (String) request.getAttribute("userRole") : null;
+        log.debug("🔐 CurrentUserRole: {}", role);
+        return role;
     }
 
     private HttpServletRequest getCurrentRequest() {
